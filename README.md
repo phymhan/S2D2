@@ -95,6 +95,16 @@ python example_llada.py --generate_fn='cached'
 python example_llada.py --generate_fn='ssd_policy'
 ```
 
+### D2F
+
+```bash
+cd D2F
+
+python example_d2f.py --generate_fn='d2f'
+```
+
+More examples see `D2F/README.md`.
+
 ## Evaluation with lm-eval
 
 We use a forked version of [lm-evaluation-harness](https://github.com/phymhan/lm-evaluation-harness). Clone the fork and switch to the `more-eval` branch:
@@ -129,14 +139,7 @@ HF_ALLOW_CODE_EVAL=1 lm_eval --model hf \
 
 ## Citation
 
-```bibtex
-@article{han2026fast,
-  title={Fast Decoding for Diffusion LLMs via Training-Free Self-Speculation},
-  author={Han, Ligong and Wang, Hao and Gao, Han and Xu, Kai and Srivastava, Akash},
-  journal={arXiv preprint arXiv:2503.24358},
-  year={2026}
-}
-```
+Coming soon.
 
 ## Acknowledgement
 
