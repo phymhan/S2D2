@@ -1,6 +1,6 @@
 # S2D2: Fast Decoding for Block-Diffusion LLMs via Training-Free Self-Speculation
 
-Code for the [paper](https://phymhan.github.io/).
+Code for the [paper](https://phymhan.github.io/data/s2d2_paper.pdf).
 
 <p align="center">
 <img width="900" src="./assets/overview.png">
@@ -23,7 +23,7 @@ S2D2/
 ├── SDAR/                  # SDAR-8B-Chat
 ├── Fast-dLLM-v2/          # Fast-dLLM v2
 ├── LLaDA2/                # LLaDA2.1-Mini
-└── D2F/                   # Discrete Diffusion Forcing (coming soon)
+└── D2F/                   # Discrete Diffusion Forcing
 ```
 
 ## Installation
@@ -129,7 +129,14 @@ HF_ALLOW_CODE_EVAL=1 lm_eval --model hf \
 
 ## Citation
 
-Coming soon.
+```bibtex
+@article{han2026fast,
+  title={Fast Decoding for Diffusion LLMs via Training-Free Self-Speculation},
+  author={Han, Ligong and Wang, Hao and Gao, Han and Xu, Kai and Srivastava, Akash},
+  journal={arXiv preprint arXiv:2503.24358},
+  year={2026}
+}
+```
 
 ## Acknowledgement
 
