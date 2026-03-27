@@ -1,6 +1,6 @@
 # S2D2: Fast Decoding for Block-Diffusion LLMs via Training-Free Self-Speculation
 
-Code for the [paper](https://phymhan.github.io/data/s2d2_paper.pdf).
+Code for the [paper](https://arxiv.org/abs/2603.25702).
 
 <p align="center">
 <img width="900" src="./assets/overview.png">
@@ -103,7 +103,7 @@ cd D2F
 python example_d2f.py --generate_fn='d2f'
 ```
 
-More examples see `D2F/README.md`.
+More examples can be found in `D2F/README.md`.
 
 ## Evaluation with lm-eval
 
@@ -139,7 +139,14 @@ HF_ALLOW_CODE_EVAL=1 lm_eval --model hf \
 
 ## Citation
 
-Coming soon.
+```bibtex
+@article{han2026s2d2,
+  title={Fast Decoding for Diffusion LLMs via Training-Free Self-Speculation},
+  author={Han, Ligong and Wang, Hao and Gao, Han and Xu, Kai and Srivastava, Akash},
+  journal={arXiv preprint arXiv:2603.25702},
+  year={2026}
+}
+```
 
 ## Acknowledgement
 
