@@ -336,7 +336,7 @@ def _decide_do_verify(
             if is_on:
                 do_verify = not (do_verify_score < float(hysteresis_threshold_off))
             else:
-                do_verify = bool(do_verify_score > float(hysteresis_threshold_on))
+                do_verify = bool(do_verify_score > float(hysteresis_threshold_on))  # NOTE: in paper it is >=, but we used > in experiments
             hysteresis_state["is_on"] = bool(do_verify)
     elif do_verify_policy == "contextual_bandit_ucb":
         if ucb_state is None:

@@ -949,7 +949,7 @@ def generate_ssd_policy(
                     if is_on:
                         do_verify = not (do_verify_score < hysteresis_threshold_off)
                     else:
-                        do_verify = bool(do_verify_score > hysteresis_threshold_on)
+                        do_verify = bool(do_verify_score > hysteresis_threshold_on)  # NOTE: in paper it is >=, but we used > in experiments
                     hysteresis_state["is_on"] = bool(do_verify)
             else:
                 raise ValueError(f"Unknown do_verify_policy: {do_verify_policy}")
