@@ -105,7 +105,54 @@ python example_d2f.py --generate_fn='d2f'
 
 More examples can be found in `D2F/README.md`.
 
-## Evaluation with lm-eval
+## Configurations used in the paper (main results)
+
+Below are the S2D2 configurations used in our paper for each model family. All configs use `--token_acceptance_estimator soft_entropy_negexp` unless noted otherwise.
+
+### SDAR-8B
+
+| Config | Block Size | Routing Policy | Key Arguments |
+|--------|-----------|----------------|---------------|
+| Config-A | $B=4$, $S=4$ | Score-threshold ($\tau_\text{score}=0$, static, $c=1$) | `--block_length 4 --denoising_steps 4 --do_verify_policy score_threshold --do_verify_score_threshold 0 --do_verify_score_type difference_static --score_penalty_coef 1 --cache_ver --draft_ver` |
+| Config-B | $B=16$, $S=16$ | Always-on verification ($\tau_\text{score}=0$, static, $c=0$) | `--block_length 16 --denoising_steps 16 --do_verify_policy score_threshold --do_verify_score_threshold 0 --do_verify_score_type difference_static --score_penalty_coef 0 --cache_ver --draft_ver` |
+
+Both configs use `--remasking_strategy low_confidence_dynamic --confidence_threshold 0.85`. AR-like caching (`--cache_ver --draft_ver`) is enabled for SDAR.
+
+### Fast-dLLM v2
+
+Base diffusion uses dynamic confidence thresholding with $\tau=0.9$.
+
+| Config | Sub-block Size | Routing Policy | Key Arguments |
+|--------|---------------|----------------|---------------|
+| Config-A | $\text{SB}=4$ | Hysteresis ($\tau_\text{on}=1$, $\tau_\text{off}=-5$, dynamic, $c=1$) | `--small_block_size 4 --do_verify_policy score_hysteresis --hysteresis_threshold_on 1 --hysteresis_threshold_off -5 --do_verify_score_type difference_dynamic --score_penalty_coef 1` |
+| Config-B | $\text{SB}=16$ | Hysteresis ($\tau_\text{on}=1$, $\tau_\text{off}=-5$, dynamic, $c=1$) | `--small_block_size 16 --do_verify_policy score_hysteresis --hysteresis_threshold_on 1 --hysteresis_threshold_off -5 --do_verify_score_type difference_dynamic --score_penalty_coef 1` |
+| Config-C | $\text{SB}=32$ | Minimum-span ($\tau_\text{span}=8$) | `--small_block_size 32 --do_verify_policy mask_span_length --min_ssd_span_length 8` |
+
+All configs use `--block_size 32 --threshold 0.9`. AR-like caching is **not** used for Fast-dLLM v2 (`--cache_ver false --draft_ver false`).
+
+### LLaDA2.1-Mini
+
+| Config | Setting | Routing Policy | Key Arguments |
+|--------|---------|----------------|---------------|
+| Conservative | $\tau_\text{mask}=0.95$, $\tau_\text{edit}=0.9$ | Score-threshold ($\tau_\text{score}=-5$, static, $c=4$) | `--threshold 0.95 --editing_threshold 0.9 --do_verify_policy score_threshold --do_verify_score_threshold -5 --do_verify_score_type difference_static --score_penalty_coef 4` |
+| Quality | $\tau_\text{mask}=0.7$, $\tau_\text{edit}=0.5$ | Score-threshold ($\tau_\text{score}=0$, static, $c=4$) | `--threshold 0.7 --editing_threshold 0.5 --do_verify_policy score_threshold --do_verify_score_threshold 0 --do_verify_score_type difference_static --score_penalty_coef 4` |
+
+Both configs use `--block_length 32`. AR-like caching is **not** used for LLaDA2.1-Mini. The Conservative config ($\tau_\text{score}=-5$) triggers verification only when the expected gain is very high, while the Quality config ($\tau_\text{score}=0$) verifies more aggressively.
+
+## Evaluation
+
+### Custom eval scripts
+
+Our custom eval scripts (`eval_gsm8k_*.py`, `eval_mbpp_*.py`, `eval_humaneval_*.py`) are used for:
+- **GSM8K**: all models (SDAR, Fast-dLLM v2, LLaDA2.1-Mini)
+- **MBPP**: SDAR and LLaDA2.1-Mini
+- **HumanEval**: SDAR
+
+All other benchmark/model combinations use `lm-eval-harness` (see below).
+
+**Note on sampling settings:** For historical reasons (default argument inherited from the generate function), SDAR custom eval scripts use `temperature=1.0` with `do_sample=True` for GSM8K, MBPP, and HumanEval. The random seed is fixed to 42 for reproducibility. Fast-dLLM v2 and LLaDA2.1-Mini custom eval scripts use `temperature=0.0` (greedy decoding). For `lm-eval-harness` evaluations, all models use `do_sample=False` (greedy).
+
+### lm-eval-harness
 
 We use a forked version of [lm-evaluation-harness](https://github.com/phymhan/lm-evaluation-harness). Clone the fork and switch to the `more-eval` branch:
 

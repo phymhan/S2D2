@@ -184,6 +184,7 @@ def main():
     gen_group.add_argument("--block_length", type=int, default=4, help="Block length for diffusion decoding")
     gen_group.add_argument("--denoising_steps", type=int, default=4, help="Number of denoising steps per block")
     gen_group.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature (>0)")
+    gen_group.add_argument("--do_sample", type=str2bool, default=None, help="Enable stochastic sampling (default: auto, True if temperature > 0)")
     gen_group.add_argument("--top_k", type=int, default=0, help="Top-K sampling (0 disables)")
     gen_group.add_argument("--top_p", type=float, default=1.0, help="Top-P sampling probability threshold")
     gen_group.add_argument(
@@ -295,6 +296,11 @@ def main():
     )
     log_group.add_argument("--config_str", type=str, default=None, help="If set, append this string to the summary file")
 
+    # Throughput settings
+    tput_group = parser.add_argument_group("Throughput Settings")
+    tput_group.add_argument("--batch_size", type=int, default=1, help="Fake-batch size for throughput testing")
+    tput_group.add_argument("--checkpoint_gen_tokens", type=int, default=None, help="Record NFE/time checkpoint at this gen token count")
+
     # Other settings
     other_group = parser.add_argument_group("Other Settings")
     other_group.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -302,6 +308,10 @@ def main():
     args = parser.parse_args()
     # Keep this flag in argparse for compatibility, but force-disable it.
     args.legacy_ssd_span_strategy = False
+
+    # Auto-infer do_sample from temperature if not explicitly set
+    if args.do_sample is None:
+        args.do_sample = (args.temperature > 0)
 
     if args.cuda_visible_devices is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
@@ -383,15 +393,6 @@ def main():
             'do_verify_score_type': args.do_verify_score_type,
             'score_penalty_coef': args.score_penalty_coef,
         }
-    # elif args.generate_fn == "ssd2":
-    #     from generate_ssd2 import block_diffusion_generate
-    #     generate_fn = block_diffusion_generate
-    #     generate_fn_kwargs = {
-    #         'cache_ver': args.cache_ver,
-    #         'draft_ver': args.draft_ver,
-    #         'min_ssd_span_length': args.min_ssd_span_length,
-    #         'ssd_ratio_tempering_factor': args.ssd_ratio_tempering_factor,
-    #     }
     else:
         raise ValueError(f"Invalid generate function: {args.generate_fn}")
 
@@ -449,6 +450,7 @@ def main():
     results = []
     correct_so_far = 0
     acc_series = []
+    per_sample_stats = []  # collect per-sample NFE/time
 
     mask_token_str = tokenizer.mask_token or "<|MASK|>"
     stop_ids = args.stopping_criteria_idx
@@ -491,23 +493,38 @@ def main():
         for vote_i in range(n_votes):
             set_seed(example_seed_base + vote_i)
 
+            # Repeat input for fake-batching throughput test.
+            if args.batch_size > 1:
+                batch_input_ids = tokens["input_ids"].repeat(args.batch_size, 1)
+                batch_attention_mask = tokens["attention_mask"].repeat(args.batch_size, 1) if tokens.get("attention_mask") is not None else None
+            else:
+                batch_input_ids = tokens["input_ids"]
+                batch_attention_mask = tokens.get("attention_mask")
+
+            t0 = time.perf_counter()
             out_ids = generate_fn(
                 model,
-                input_ids=tokens["input_ids"],
-                attention_mask=tokens["attention_mask"],
+                input_ids=batch_input_ids,
+                attention_mask=batch_attention_mask,
                 mask_id=args.mask_id,
                 gen_length=args.gen_length,
                 block_length=args.block_length,
                 denoising_steps=args.denoising_steps,
                 temperature=args.temperature,
+                do_sample=args.do_sample,
                 top_k=args.top_k,
                 top_p=args.top_p,
                 remasking_strategy=args.remasking_strategy,
                 confidence_threshold=args.confidence_threshold,
                 eb_threshold=args.eb_threshold,
                 stopping_criteria_idx=stop_ids,
+                return_forward_stats=True,
+                _timer_start=t0,
+                checkpoint_gen_tokens=args.checkpoint_gen_tokens,
                 **generate_fn_kwargs,
             )
+            t_total = time.perf_counter() - t0
+            out_ids, sample_stats = out_ids
 
             gen_ids = out_ids[:, prompt_len : prompt_len + args.gen_length]
             out_text = tokenizer.batch_decode(gen_ids, skip_special_tokens=True)[0]
@@ -522,6 +539,13 @@ def main():
         correct = (majority == gt) if majority is not None and gt is not None else False
         if correct:
             correct_so_far += 1
+
+        per_sample_stats.append({
+            "nfe_total": sample_stats.get("total_forward_steps", 0),
+            "time_total": t_total,
+            "nfe_checkpoint": sample_stats.get("checkpoint_nfe"),
+            "time_checkpoint": sample_stats.get("checkpoint_time"),
+        })
 
         results.append(
             {
@@ -554,6 +578,17 @@ def main():
     acc = cnt / total if total > 0 else 0.0
     print(f"Accuracy: {cnt} / {total} = {acc :.4f}")
 
+    # Compute averaged throughput stats.
+    avg_nfe_total = np.mean([s["nfe_total"] for s in per_sample_stats]) if per_sample_stats else 0
+    avg_time_total = np.mean([s["time_total"] for s in per_sample_stats]) if per_sample_stats else 0
+    ckpt_nfes = [s["nfe_checkpoint"] for s in per_sample_stats if s["nfe_checkpoint"] is not None]
+    ckpt_times = [s["time_checkpoint"] for s in per_sample_stats if s["time_checkpoint"] is not None]
+    avg_nfe_ckpt = np.mean(ckpt_nfes) if ckpt_nfes else None
+    avg_time_ckpt = np.mean(ckpt_times) if ckpt_times else None
+    print(f"Avg NFE total: {avg_nfe_total:.1f}, Avg time total: {avg_time_total:.3f}s")
+    if avg_nfe_ckpt is not None:
+        print(f"Avg NFE @{args.checkpoint_gen_tokens}tok: {avg_nfe_ckpt:.1f}, Avg time @{args.checkpoint_gen_tokens}tok: {avg_time_ckpt:.3f}s")
+
     results.append({"accuracy": acc})
 
     if args.summary_file:
@@ -576,6 +611,12 @@ def main():
             "correct": cnt,
             "total": total,
             "eval_seconds": eval_seconds,
+            "batch_size": args.batch_size,
+            "avg_nfe_total": round(avg_nfe_total, 1),
+            "avg_time_total": round(avg_time_total, 3),
+            "avg_nfe_checkpoint": round(avg_nfe_ckpt, 1) if avg_nfe_ckpt is not None else None,
+            "avg_time_checkpoint": round(avg_time_ckpt, 3) if avg_time_ckpt is not None else None,
+            "checkpoint_gen_tokens": args.checkpoint_gen_tokens,
             # record the exact config fields requested by the user
             "gen_length": args.gen_length,
             "block_length": args.block_length,
